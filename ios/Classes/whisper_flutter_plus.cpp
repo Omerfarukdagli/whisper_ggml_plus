@@ -14,6 +14,9 @@
 #include <chrono>
 #include "json/json.hpp"
 #include <stdio.h>
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 
 #if defined(__GNUC__)
 #define FUNCTION_ATTRIBUTE __attribute__((visibility("default"))) __attribute__((used))
@@ -162,8 +165,17 @@ json transcribe(json jsonBody)
         dispose_context_locked();
         
         whisper_context_params cparams = whisper_context_default_params();
+#if defined(TARGET_OS_SIMULATOR) && TARGET_OS_SIMULATOR
+        // The iOS Simulator's emulated Metal driver (MTLSimDevice) crashes in
+        // ggml_metal_buffer_set_tensor (XPC "API Misuse" / xpc_shmem_create)
+        // while uploading whisper's positional-embedding tensor. CPU-only on
+        // the simulator; real devices keep full GPU.
+        cparams.use_gpu = false;
+        cparams.flash_attn = false;
+#else
         cparams.use_gpu = true; 
         cparams.flash_attn = true;
+#endif
 
         g_ctx = whisper_init_from_file_with_params(params.model.c_str(), cparams);
         if (g_ctx != nullptr) {
